@@ -1,0 +1,12 @@
+spring:
+  kafka:
+    listener:
+      ack-mode: manual
+    consumer:
+      enable-auto-commit: false
+      example-topic:
+        topic: "oven_temperature"
+        group-id: "oven_control_consumer"
+      auto-offset-reset: earliest
+      properties:
+        max.poll.interval.ms: 300000
