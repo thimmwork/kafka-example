@@ -1,0 +1,35 @@
+{
+  "time": 0,
+  "warnings": [
+    {
+      "type": 0,
+      "level": 0,
+      "start": 0,
+      "end": 0,
+      "states": [
+        0
+      ],
+      "regions": [
+        {
+          "polygon": [
+            0
+          ],
+          "triangles": [
+            0
+          ]
+        }
+      ],
+      "urls": [
+        "string"
+      ],
+      "bn": true,
+      "isVorabinfo": true,
+      "instruction": "string",
+      "description": "string",
+      "descriptionText": "string",
+      "event": "string",
+      "headLine": "string"
+    }
+  ],
+  "binnenSee": "string"
+}

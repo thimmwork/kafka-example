@@ -1,0 +1,22 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<databaseChangeLog
+        xmlns="http://www.liquibase.org/xml/ns/dbchangelog"
+        xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+        xmlns:pro="http://www.liquibase.org/xml/ns/pro"
+        xsi:schemaLocation="http://www.liquibase.org/xml/ns/dbchangelog
+      http://www.liquibase.org/xml/ns/dbchangelog/dbchangelog-4.1.xsd
+      http://www.liquibase.org/xml/ns/pro
+      http://www.liquibase.org/xml/ns/pro/liquibase-pro-4.1.xsd">
+    <changeSet author="thimmwork" id="001-create-table-warning">
+        <createTable tableName="warning">
+            <column name="warn_id" type="VARCHAR(255)">
+                <constraints nullable="false" primaryKey="true" unique="true"/>
+            </column>
+            <column name="head_line" type="VARCHAR(255)"/>
+            <column name="event" type="VARCHAR(100)"/>
+            <column name="description" type="VARCHAR(4000)"/>
+            <column name="description_text" type="VARCHAR(4000)"/>
+            <column name="end_time" type="TIMESTAMP"/>
+        </createTable>
+    </changeSet>
+</databaseChangeLog>

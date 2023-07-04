@@ -3,15 +3,17 @@ package net.thimmwork.example.kafka.adapter.kafka;
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import io.prometheus.client.Counter;
+import net.thimmwork.example.kafka.adapter.json.in.NowcastWarningsUpdatedMessage;
 import net.thimmwork.example.kafka.adapter.metrics.Metrics;
-import net.thimmwork.example.kafka.domain.model.OvenTemperatureMessage;
-import net.thimmwork.example.kafka.domain.service.OvenTemperatureChangedProcessor;
+import net.thimmwork.example.kafka.domain.model.geo.Location;
+import net.thimmwork.example.kafka.domain.service.NowcastProcessor;
 import org.apache.kafka.clients.consumer.ConsumerRecord;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.slf4j.MDC;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Qualifier;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.dao.TransientDataAccessException;
 import org.springframework.kafka.annotation.KafkaListener;
 import org.springframework.kafka.support.Acknowledgment;
@@ -19,27 +21,38 @@ import org.springframework.retry.support.RetryTemplate;
 import org.springframework.retry.support.RetryTemplateBuilder;
 import org.springframework.stereotype.Service;
 
-@Service
-public class OvenTemperatureKafkaConsumer {
-    private static final Logger LOGGER = LoggerFactory.getLogger(OvenTemperatureKafkaConsumer.class);
-    private static final TypeReference<OvenTemperatureMessage> MESSAGE_TYPE = new TypeReference<>() {};
+import java.math.BigDecimal;
+import java.time.Clock;
+import java.time.Instant;
+import java.time.temporal.ChronoUnit;
 
-    private final OvenTemperatureChangedProcessor processor;
+@Service
+public class DwdNowcastConsumer {
+    private static final Logger LOGGER = LoggerFactory.getLogger(DwdNowcastConsumer.class);
+    private static final TypeReference<NowcastWarningsUpdatedMessage> MESSAGE_TYPE = new TypeReference<>() {};
+
+    private final Clock clock;
     private final ObjectMapper objectMapper;
-    private final OvenTemperatureChangedProcessor ovenTemperatureChangedProcessor;
+    private final Location location;
+    private final NowcastProcessor processor;
     private final RetryTemplate retryTemplate;
     private final Counter consumedMessagesCounter;
+    private final long maxAgeInMinutes;
 
 
     @Autowired
-    public OvenTemperatureKafkaConsumer(OvenTemperatureChangedProcessor processor,
-                                        ObjectMapper jsonMapper,
-                                        @Qualifier(Metrics.CONSUMED_KAFKA_MESSAGES_COUNTER) Counter consumedMessagesCounter,
-                                        OvenTemperatureChangedProcessor ovenTemperatureChangedProcessor) {
-        this.processor = processor;
+    public DwdNowcastConsumer(Clock clock,
+                              ObjectMapper jsonMapper,
+                              @Qualifier(Metrics.CONSUMED_KAFKA_MESSAGES_COUNTER) Counter consumedMessagesCounter,
+                              @Value("${net.thimmwork.nowcast.max-meter-age-in-minutes:1440}") int maxAgeInMinutes,
+                              Location location,
+                              NowcastProcessor nowcastProcessor) {
+        this.clock = clock;
         this.objectMapper = jsonMapper;
-        this.ovenTemperatureChangedProcessor = ovenTemperatureChangedProcessor;
+        this.location = location;
+        this.processor = nowcastProcessor;
         this.consumedMessagesCounter = consumedMessagesCounter;
+        this.maxAgeInMinutes = maxAgeInMinutes;
 
         this.retryTemplate = new RetryTemplateBuilder()
                 .retryOn(TransientDataAccessException.class)
@@ -62,9 +75,13 @@ public class OvenTemperatureKafkaConsumer {
              MDC.MDCCloseable c3 = MDC.putCloseable("kafka.partition", String.valueOf(consumerRecord.partition()));
              MDC.MDCCloseable c4 = MDC.putCloseable("kafka.key", consumerRecord.key())
         ) {
-            OvenTemperatureMessage message = objectMapper.readValue(consumerRecord.value(), MESSAGE_TYPE);
+            NowcastWarningsUpdatedMessage message = objectMapper.readValue(consumerRecord.value(), MESSAGE_TYPE);
 
-            retryTemplate.execute(context -> ovenTemperatureChangedProcessor.onTemperatureChange(message));
+            if (!isRelevant(message)) {
+                return;
+            }
+
+            retryTemplate.execute(context -> processor.onWarningUpdated(message));
 
             consumedMessagesCounter.labels(topic, "success").inc();
             LOGGER.info("Successfully processed kafka message with key {}", consumerRecord.key());
@@ -73,5 +90,21 @@ public class OvenTemperatureKafkaConsumer {
             LOGGER.error("Error processing kafka message with key {}", consumerRecord.key(), e);
             consumedMessagesCounter.labels(topic, "failure").inc();
         }
+    }
+
+    private boolean isRelevant(NowcastWarningsUpdatedMessage message) {
+        var deprecationThresholdTime = ChronoUnit.MINUTES.addTo(clock.instant(), -maxAgeInMinutes);
+        if (Instant.ofEpochMilli(message.getTime()).isBefore(deprecationThresholdTime)) {
+            LOGGER.debug("Message is irrelevant because it is deprecated");
+            return false;
+        }
+        var isRelevantForRegion = message.getWarnings().stream()
+                .flatMap(warning -> warning.getRegions().stream())
+                .anyMatch(region -> region.getMapPolygon().contains(location));
+        if (!isRelevantForRegion) {
+            LOGGER.debug("Message is irrelevant because none of the regions contains our location");
+            return false;
+        }
+        return true;
     }
 }
