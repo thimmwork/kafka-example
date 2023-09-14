@@ -3,7 +3,6 @@ package net.thimmwork.example.kafka.domain.model;
 import net.thimmwork.example.kafka.adapter.json.in.NowcastWarning;
 import org.springframework.data.annotation.PersistenceCreator;
 
-import javax.persistence.Column;
 import javax.persistence.Entity;
 import javax.persistence.Id;
 import java.time.Instant;
